@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThermoSim PCB</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#080d18;font-family:'JetBrains Mono',monospace;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.container{width:100%;max-width:860px}
+.top{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.ctrl{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:10px 12px;border-top:2px solid var(--c)}
+.ctrl-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--c);box-shadow:0 0 5px var(--c)}
+.ctrl-name{font-size:11px;font-weight:600;color:#e2e8f0}
+.ctrl-sub{font-size:9px;color:#475569}
+.ctrl-row{display:flex;align-items:center;gap:7px}
+.ctrl-row input[type=range]{flex:1;-webkit-appearance:none;height:2px;background:rgba(255,255,255,.1);border-radius:2px;outline:none}
+.ctrl-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:var(--c);border-radius:50%;cursor:pointer;box-shadow:0 0 5px var(--c)}
+.val{font-size:11px;color:var(--c);min-width:32px;text-align:right}
+.toggle-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.tog{background:#0f172a;border:1px solid #1e3a5f;border-radius:100px;padding:4px 14px;font-size:10px;color:#64748b;cursor:pointer;transition:all .15s;user-select:none}
+.tog.on{color:#7dd3fc;border-color:rgba(59,130,246,.5);background:rgba(59,130,246,.08)}
+.wrap{position:relative;width:100%;border-radius:10px;overflow:hidden;border:1px solid #1e3a5f}
+canvas{display:block;width:100%}
+#oC{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+.probe{margin-top:8px;padding:8px 12px;background:#0f172a;border:1px solid #1e3a5f;border-radius:8px;font-size:11px;color:#64748b;min-height:34px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pill{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);border-radius:100px;padding:2px 9px;font-size:10px;color:#7dd3fc}
+.pill.red{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:#fca5a5}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.stat{background:#0f172a;border:1px solid #1e3a5f;border-radius:8px;padding:8px 10px}
+.stat-l{font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.stat-v{font-size:16px;font-weight:600;color:#e2e8f0}
+.leg{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:10px;color:#475569}
+#legBar{flex:1;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="top">
+    <div class="ctrl" style="--c:#ef4444">
+      <div class="ctrl-head"><div class="dot"></div><div><div class="ctrl-name">CPU</div><div class="ctrl-sub">Intel Core i9</div></div></div>
+      <div class="ctrl-row"><input type="range" min="10" max="150" value="95" step="1" id="sCPU"><span class="val" id="oCPU">95W</span></div>
+    </div>
+    <div class="ctrl" style="--c:#f97316">
+      <div class="ctrl-head"><div class="dot"></div><div><div class="ctrl-name">GPU</div><div class="ctrl-sub">NVIDIA RTX 4090</div></div></div>
+      <div class="ctrl-row"><input type="range" min="10" max="200" value="130" step="1" id="sGPU"><span class="val" id="oGPU">130W</span></div>
+    </div>
+    <div class="ctrl" style="--c:#3b82f6">
+      <div class="ctrl-head"><div class="dot"></div><div><div class="ctrl-name">RAM</div><div class="ctrl-sub">DDR5 x3</div></div></div>
+      <div class="ctrl-row"><input type="range" min="1" max="30" value="8" step="1" id="sRAM"><span class="val" id="oRAM">8W</span></div>
+    </div>
+    <div class="ctrl" style="--c:#22c55e">
+      <div class="ctrl-head"><div class="dot"></div><div><div class="ctrl-name">Chipset</div><div class="ctrl-sub">PCH Intel</div></div></div>
+      <div class="ctrl-row"><input type="range" min="1" max="50" value="20" step="1" id="sCHIP"><span class="val" id="oCHIP">20W</span></div>
+    </div>
+  </div>
+
+  <div class="toggle-row">
+    <div class="tog on" id="tIso"  onclick="toggleLayer('iso')">Curvas de nivel f(x,y)=k</div>
+    <div class="tog on" id="tGrad" onclick="toggleLayer('grad')">Campo gradiente ∇f</div>
+    <div class="tog on" id="tCrit" onclick="toggleLayer('crit')">Puntos críticos ∇f=0</div>
+    <div class="tog on" id="tComp" onclick="toggleLayer('comp')">Componentes</div>
+  </div>
+
+  <div class="wrap">
+    <canvas id="hC"></canvas>
+    <canvas id="oC"></canvas>
+  </div>
+
+  <div class="probe" id="probe">
+    <span>Mueve el cursor sobre la placa para inspeccionar T, ∂f/∂x, ∂f/∂y y |∇f|.</span>
+  </div>
+
+  <div class="leg">
+    <span>20°C</span>
+    <canvas id="legBar" height="8"></canvas>
+    <span id="legMax">—</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-l">Temp. máxima</div><div class="stat-v" style="color:#f87171" id="mMax">—</div></div>
+    <div class="stat"><div class="stat-l">Componente crítico</div><div class="stat-v" style="color:#fb923c" id="mComp">—</div></div>
+    <div class="stat"><div class="stat-l">Temp. promedio</div><div class="stat-v" id="mAvg">—</div></div>
+    <div class="stat"><div class="stat-l">Temp. mínima</div><div class="stat-v" id="mMin">—</div></div>
+  </div>
+</div>
+
+<script>
+// ── resolución reducida para el heatmap, se escala con CSS ──
+const W=320, H=200;
+// canvas de display en pantalla completa
+const DSPW=800, DSPH=480;
+
+const hC=document.getElementById('hC');
+const oC=document.getElementById('oC');
+hC.width=DSPW; hC.height=DSPH;
+oC.width=DSPW; oC.height=DSPH;
+const hx=hC.getContext('2d');
+const ox=oC.getContext('2d');
+
+// offscreen canvas para calcular el heatmap en baja res
+const off=document.createElement('canvas');
+off.width=W; off.height=H;
+const offx=off.getContext('2d');
+
+const AMBIENT=20;
+const layers={iso:true,grad:true,crit:true,comp:true};
+
+function toggleLayer(l){
+  layers[l]=!layers[l];
+  document.getElementById('t'+l[0].toUpperCase()+l.slice(1)).classList.toggle('on',layers[l]);
+  renderOverlay();
+}
+
+const comps=[
+  {id:'CPU', x:.28,y:.44,sx:.11,sy:.11,w:.15,h:.20,hex:'#ef4444',label:'CPU',sub:'Intel Core i9',slider:'sCPU'},
+  {id:'GPU', x:.67,y:.52,sx:.18,sy:.10,w:.30,h:.13,hex:'#f97316',label:'GPU',sub:'NVIDIA RTX 4090',slider:'sGPU'},
+  {id:'RAM1',x:.455,y:.15,sx:.03,sy:.08,w:.035,h:.23,hex:'#3b82f6',label:'',sub:'',slider:'sRAM'},
+  {id:'RAM2',x:.505,y:.15,sx:.03,sy:.08,w:.035,h:.23,hex:'#3b82f6',label:'',sub:'',slider:'sRAM'},
+  {id:'RAM3',x:.555,y:.15,sx:.03,sy:.08,w:.035,h:.23,hex:'#3b82f6',label:'',sub:'',slider:'sRAM'},
+  {id:'PCH', x:.44,y:.74,sx:.07,sy:.07,w:.10,h:.10,hex:'#22c55e',label:'PCH',sub:'Chipset',slider:'sCHIP'},
+];
+
+function pwr(id){return+document.getElementById(id).value}
+
+// precalcula exponentes por componente para el pixel dado
+function gradAt(nx,ny){
+  let dfdx=0,dfdy=0,t=AMBIENT;
+  comps.forEach(c=>{
+    const dx=nx-c.x, dy=ny-c.y, p=pwr(c.slider);
+    const sx2=2*c.sx*c.sx, sy2=2*c.sy*c.sy;
+    const g=p*Math.exp(-(dx*dx/sx2+dy*dy/sy2));
+    t+=g;
+    dfdx+=g*(-2*dx/sx2);
+    dfdy+=g*(-2*dy/sy2);
+  });
+  return{t,dfdx,dfdy,mag:Math.sqrt(dfdx*dfdx+dfdy*dfdy)};
+}
+
+function tColor(r){
+  let R,G,B;
+  if(r<.25){const s=r/.25;R=Math.round(15+s*15);G=Math.round(20+s*50);B=Math.round(160+s*40);}
+  else if(r<.5){const s=(r-.25)/.25;R=Math.round(30+s*185);G=Math.round(70+s*140);B=Math.round(200-s*170);}
+  else if(r<.75){const s=(r-.5)/.25;R=Math.round(215+s*40);G=Math.round(210-s*150);B=Math.round(30-s*20);}
+  else{const s=(r-.75)/.25;R=255;G=Math.round(60-s*50);B=10;}
+  return[R,G,B];
+}
+
+// tabla de colores precalculada (256 entradas)
+const colorTable=new Uint8Array(256*3);
+for(let i=0;i<256;i++){const[R,G,B]=tColor(i/255);colorTable[i*3]=R;colorTable[i*3+1]=G;colorTable[i*3+2]=B;}
+
+let cT, cMin, cMax;
+let pendingDraw=false;
+let rafId=null;
+
+function scheduleDraw(){
+  if(rafId)return;
+  rafId=requestAnimationFrame(()=>{rafId=null;draw();});
+}
+
+function drawHeat(){
+  const img=offx.createImageData(W,H);
+  const T=new Float32Array(W*H);
+  let mn=1e9,mx=-1e9,sm=0;
+
+  for(let py=0;py<H;py++){
+    const ny=py/H;
+    for(let px=0;px<W;px++){
+      const nx=px/W;
+      let t=AMBIENT;
+      comps.forEach(c=>{
+        const dx=nx-c.x,dy=ny-c.y,p=pwr(c.slider);
+        t+=p*Math.exp(-(dx*dx/(2*c.sx*c.sx)+dy*dy/(2*c.sy*c.sy)));
+      });
+      T[py*W+px]=t;
+      if(t<mn)mn=t; if(t>mx)mx=t; sm+=t;
+    }
+  }
+  cT=T; cMin=mn; cMax=mx;
+
+  const inv=mx===mn?1:255/(mx-mn);
+  for(let i=0;i<W*H;i++){
+    const idx=Math.round((T[i]-mn)*inv)*3;
+    img.data[i*4]=colorTable[idx];
+    img.data[i*4+1]=colorTable[idx+1];
+    img.data[i*4+2]=colorTable[idx+2];
+    img.data[i*4+3]=255;
+  }
+  offx.putImageData(img,0,0);
+
+  // escalar suavemente a display
+  hx.imageSmoothingEnabled=true;
+  hx.imageSmoothingQuality='high';
+  hx.drawImage(off,0,0,DSPW,DSPH);
+
+  document.getElementById('mMax').textContent=Math.round(mx)+'°C';
+  document.getElementById('mMin').textContent=Math.round(mn)+'°C';
+  document.getElementById('mAvg').textContent=Math.round(sm/(W*H))+'°C';
+  const hot=[{id:'CPU',p:pwr('sCPU')},{id:'GPU',p:pwr('sGPU')},{id:'PCH',p:pwr('sCHIP')}].sort((a,b)=>b.p-a.p);
+  document.getElementById('mComp').textContent=hot[0].id;
+  drawLeg(mn,mx);
+}
+
+function drawLeg(mn,mx){
+  const lc=document.getElementById('legBar');
+  lc.width=lc.offsetWidth||500;
+  const lx=lc.getContext('2d');
+  const g=lx.createLinearGradient(0,0,lc.width,0);
+  for(let i=0;i<=20;i++){const r=i/20;const[R,G,B]=tColor(r);g.addColorStop(r,`rgb(${R},${G},${B})`);}
+  lx.fillStyle=g; lx.fillRect(0,0,lc.width,8);
+  document.getElementById('legMax').textContent=Math.round(mx)+'°C';
+}
+
+function renderOverlay(){
+  ox.clearRect(0,0,DSPW,DSPH);
+  if(!cT)return;
+
+  // grid
+  ox.strokeStyle='rgba(59,130,246,0.06)'; ox.lineWidth=.5;
+  for(let i=1;i<14;i++){ox.beginPath();ox.moveTo(DSPW*i/14,0);ox.lineTo(DSPW*i/14,DSPH);ox.stroke();}
+  for(let i=1;i<10;i++){ox.beginPath();ox.moveTo(0,DSPH*i/10);ox.lineTo(DSPW,DSPH*i/10);ox.stroke();}
+
+  // curvas de nivel — usando la grilla de baja res
+  if(layers.iso){
+    for(let lv=1;lv<=9;lv++){
+      const th=cMin+(cMax-cMin)*(lv/10);
+      ox.fillStyle=`rgba(255,255,255,${.08+lv*.012})`;
+      for(let py=0;py<H;py++){
+        const dy=DSPH/H;
+        for(let px=0;px<W;px++){
+          if(Math.abs(cT[py*W+px]-th)<(cMax-cMin)*.015){
+            ox.fillRect(px*(DSPW/W), py*dy, DSPW/W+1, dy+1);
+          }
+        }
+      }
+    }
+    ox.fillStyle='rgba(200,230,255,0.55)'; ox.font='9px monospace'; ox.textAlign='left';
+    ox.fillText('f(x,y) = k',5,13);
+  }
+
+  // campo gradiente — muestreo en grilla
+  if(layers.grad){
+    const step=36;
+    for(let py=step/2;py<DSPH;py+=step){
+      for(let px=step/2;px<DSPW;px+=step){
+        const nx=px/DSPW, ny=py/DSPH;
+        const{dfdx,dfdy,mag}=gradAt(nx,ny);
+        if(mag<.0005)continue;
+        const nmx=dfdx/mag, nmy=dfdy/mag;
+        const len=Math.min(13,mag*500);
+        const ex=px+nmx*len, ey=py+nmy*len;
+        const alpha=Math.min(.85,mag*350+.15);
+        // color según temp local
+        const lx_=Math.min(W-1,Math.round(nx*W)), ly_=Math.min(H-1,Math.round(ny*H));
+        const r=(cT[ly_*W+lx_]-cMin)/(cMax-cMin||1);
+        const[R,G,B]=tColor(r);
+        ox.strokeStyle=`rgba(${R},${G},${B},${alpha})`; ox.lineWidth=.9;
+        ox.beginPath(); ox.moveTo(px,py); ox.lineTo(ex,ey); ox.stroke();
+        const angle=Math.atan2(nmy,nmx);
+        ox.beginPath();
+        ox.moveTo(ex,ey);
+        ox.lineTo(ex-5*Math.cos(angle-.4),ey-5*Math.sin(angle-.4));
+        ox.lineTo(ex-5*Math.cos(angle+.4),ey-5*Math.sin(angle+.4));
+        ox.closePath(); ox.fillStyle=`rgba(${R},${G},${B},${alpha})`; ox.fill();
+      }
+    }
+    ox.fillStyle='rgba(200,230,255,0.55)'; ox.font='9px monospace'; ox.textAlign='left';
+    ox.fillText('∇f',5,24);
+  }
+
+  // puntos críticos
+  if(layers.crit){
+    comps.filter(c=>c.label).forEach(c=>{
+      const cx=c.x*DSPW, cy=c.y*DSPH;
+      ox.strokeStyle='rgba(255,255,100,0.7)'; ox.lineWidth=1.2;
+      ox.beginPath(); ox.arc(cx,cy,20,0,Math.PI*2); ox.stroke();
+      ox.strokeStyle='rgba(255,255,100,0.22)'; ox.lineWidth=.7;
+      ox.beginPath(); ox.arc(cx,cy,30,0,Math.PI*2); ox.stroke();
+      ox.fillStyle='rgba(255,255,100,0.9)'; ox.font='bold 9px monospace'; ox.textAlign='center';
+      ox.fillText('∇f=0',cx,cy-25);
+      ox.fillText('máx local',cx,cy-15);
+    });
+    [{x:.455,y:.15},{x:.505,y:.15},{x:.555,y:.15}].forEach(r=>{
+      ox.strokeStyle='rgba(100,150,255,0.5)'; ox.lineWidth=.8;
+      ox.beginPath(); ox.arc(r.x*DSPW,r.y*DSPH+.115*DSPH,10,0,Math.PI*2); ox.stroke();
+      ox.fillStyle='rgba(100,150,255,0.6)'; ox.font='8px monospace'; ox.textAlign='center';
+      ox.fillText('∇f≈0',r.x*DSPW,r.y*DSPH+.115*DSPH-13);
+    });
+    ox.fillStyle='rgba(255,255,100,0.55)'; ox.font='9px monospace'; ox.textAlign='left';
+    ox.fillText('∇f=0',5,35);
+  }
+
+  if(layers.comp) drawPCB();
+}
+
+function rRect(c,x,y,w,h,r){
+  c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.arcTo(x+w,y,x+w,y+r,r);
+  c.lineTo(x+w,y+h-r);c.arcTo(x+w,y+h,x+w-r,y+h,r);
+  c.lineTo(x+r,y+h);c.arcTo(x,y+h,x,y+h-r,r);
+  c.lineTo(x,y+r);c.arcTo(x,y,x+r,y,r);c.closePath();
+}
+function hexA(hex,a){
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return`rgba(${r},${g},${b},${a})`;
+}
+
+// PCB dibujado sobre canvas de display
+function drawPCB(){
+  const DW=DSPW, DH=DSPH;
+  [{y:.08},{y:.26},{y:.58}].forEach(s=>{
+    const sx=.01*DW,sy=s.y*DH,sw=.07*DW,sh=.055*DH;
+    ox.fillStyle='rgba(15,30,60,.85)'; ox.strokeStyle='rgba(70,120,210,.7)'; ox.lineWidth=1;
+    rRect(ox,sx,sy,sw,sh,3); ox.fill(); ox.stroke();
+    ox.fillStyle='rgba(50,90,180,.5)';
+    for(let p=0;p<8;p++) ox.fillRect(sx+3+p*6,sy+4,4,sh-8);
+    ox.fillStyle='rgba(130,175,255,.9)'; ox.font='bold 8px monospace'; ox.textAlign='center';
+    ox.fillText('PCIe',sx+sw/2,sy+sh/2+3);
+  });
+  const m2={x:.11,y:.50,w:.06,h:.032};
+  ox.fillStyle='rgba(35,15,60,.88)'; ox.strokeStyle='rgba(155,75,215,.7)'; ox.lineWidth=1;
+  ox.fillRect(m2.x*DW,m2.y*DH,m2.w*DW,m2.h*DH); ox.strokeRect(m2.x*DW,m2.y*DH,m2.w*DW,m2.h*DH);
+  ox.fillStyle='rgba(195,135,255,.9)'; ox.font='7px monospace'; ox.textAlign='center';
+  ox.fillText('M.2',m2.x*DW+m2.w*DW/2,m2.y*DH+m2.h*DH/2+3);
+  const atx={x:.13,y:.89,w:.68,h:.065};
+  ox.fillStyle='rgba(12,12,12,.92)'; ox.strokeStyle='rgba(190,170,45,.8)'; ox.lineWidth=1.2;
+  rRect(ox,atx.x*DW,atx.y*DH,atx.w*DW,atx.h*DH,4); ox.fill(); ox.stroke();
+  const pw=atx.w*DW/24;
+  for(let i=0;i<24;i++){
+    ox.fillStyle=i%2===0?'rgba(230,200,0,.7)':'rgba(25,25,25,.8)';
+    ox.fillRect(atx.x*DW+i*pw+1.5,atx.y*DH+4,pw-3,atx.h*DH-8);
+  }
+  ox.fillStyle='rgba(230,210,70,.95)'; ox.font='bold 8px monospace'; ox.textAlign='center';
+  ox.fillText('24-pin ATX',atx.x*DW+atx.w*DW/2,atx.y*DH-4);
+  [{x:.13,y:.28},{x:.13,y:.42},{x:.13,y:.56},{x:.21,y:.22},{x:.21,y:.62}].forEach(v=>{
+    ox.fillStyle='rgba(45,30,8,.9)'; ox.strokeStyle='rgba(195,155,45,.8)'; ox.lineWidth=1.1;
+    ox.beginPath(); ox.arc(v.x*DW,v.y*DH,10,0,Math.PI*2); ox.fill(); ox.stroke();
+    ox.fillStyle='rgba(215,185,65,.95)'; ox.font='bold 7px monospace'; ox.textAlign='center';
+    ox.fillText('VRM',v.x*DW,v.y*DH+3);
+  });
+  const io={x:.76,y:.03,w:.13,h:.20};
+  ox.fillStyle='rgba(20,20,20,.9)'; ox.strokeStyle='rgba(120,120,120,.7)'; ox.lineWidth=1.2;
+  rRect(ox,io.x*DW,io.y*DH,io.w*DW,io.h*DH,4); ox.fill(); ox.stroke();
+  [{y:.05,c:'rgba(0,195,85,.8)',l:'USB 3.0'},{y:.09,c:'rgba(0,145,250,.8)',l:'USB-C'},{y:.13,c:'rgba(75,75,75,.7)',l:'Audio'},{y:.17,c:'rgba(150,150,150,.6)',l:'LAN'}].forEach(p=>{
+    const ph=io.h*DH*.2;
+    ox.fillStyle=p.c; rRect(ox,io.x*DW+4,p.y*DH,io.w*DW-8,ph,2); ox.fill();
+    ox.fillStyle='rgba(255,255,255,.85)'; ox.font='7px monospace'; ox.textAlign='center';
+    ox.fillText(p.l,io.x*DW+io.w*DW/2,p.y*DH+ph/2+3);
+  });
+  ox.fillStyle='rgba(185,185,185,.9)'; ox.font='bold 8px monospace'; ox.textAlign='center';
+  ox.fillText('I/O',io.x*DW+io.w*DW/2,io.y*DH-4);
+  comps.forEach(c=>{
+    const cx=c.x*DW,cy=c.y*DH,cw=c.w*DW,ch=c.h*DH,x0=cx-cw/2,y0=cy-ch/2;
+    ox.fillStyle=hexA(c.hex,.14); ox.strokeStyle=c.hex; ox.lineWidth=2;
+    rRect(ox,x0,y0,cw,ch,5); ox.fill(); ox.stroke();
+    const cols=Math.max(3,Math.round(cw/20)), rows=Math.max(3,Math.round(ch/20));
+    for(let r=0;r<rows;r++) for(let col=0;col<cols;col++){
+      ox.fillStyle=hexA(c.hex,.38);
+      ox.fillRect(x0+cw*(col+.5)/cols-3,y0+ch*(r+.5)/rows-3,6,6);
+    }
+    ox.strokeStyle=hexA(c.hex,.55); ox.lineWidth=1.2;
+    rRect(ox,x0+4,y0+4,cw-8,ch-8,3); ox.stroke();
+    if(c.label){
+      ox.shadowColor=c.hex; ox.shadowBlur=6;
+      ox.fillStyle='rgba(255,255,255,.95)'; ox.font='bold 13px monospace'; ox.textAlign='center';
+      ox.fillText(c.label,cx,cy-5); ox.shadowBlur=0;
+      ox.fillStyle='rgba(215,215,215,.7)'; ox.font='9px monospace';
+      ox.fillText(c.sub,cx,cy+7);
+      ox.fillStyle=hexA(c.hex,.9); ox.font='bold 8px monospace';
+      ox.fillText(pwr(c.slider)+'W',cx,cy+18);
+    }
+  });
+  ox.fillStyle='rgba(110,165,255,.85)'; ox.font='bold 9px monospace'; ox.textAlign='center';
+  ox.fillText('DDR5 RAM',0.505*DW,0.04*DH);
+  ox.fillText(pwr('sRAM')+'W ea.',0.505*DW,0.41*DH);
+}
+
+function draw(){drawHeat();renderOverlay();}
+
+// probe — throttled con requestAnimationFrame
+let probePending=false;
+let lastPX=-1, lastPY=-1;
+hC.addEventListener('mousemove',e=>{
+  const rect=hC.getBoundingClientRect();
+  lastPX=Math.round((e.clientX-rect.left)*(DSPW/rect.width));
+  lastPY=Math.round((e.clientY-rect.top)*(DSPH/rect.height));
+  if(!probePending){
+    probePending=true;
+    requestAnimationFrame(updateProbe);
+  }
+});
+
+function updateProbe(){
+  probePending=false;
+  if(!cT)return;
+  const px=lastPX, py=lastPY;
+  if(px<0||px>=DSPW||py<0||py>=DSPH)return;
+  const nx=px/DSPW, ny=py/DSPH;
+  const{t,dfdx,dfdy,mag}=gradAt(nx,ny);
+  const isHot=t>(cMax*.75+cMin*.25);
+  let near=comps[0], minD=1e9;
+  comps.forEach(c=>{const d=Math.hypot(nx-c.x,ny-c.y);if(d<minD){minD=d;near=c;}});
+  document.getElementById('probe').innerHTML=
+    `<span style="color:#334155;font-size:10px">(${px},${py})</span>
+     <span class="pill ${isHot?'red':''}">T = ${t.toFixed(1)}°C</span>
+     <span class="pill">∂f/∂x = ${dfdx.toFixed(3)}</span>
+     <span class="pill">∂f/∂y = ${dfdy.toFixed(3)}</span>
+     <span class="pill">|∇f| = ${mag.toFixed(3)}</span>
+     <span class="pill">zona: ${near.id}</span>`;
+}
+
+// sliders — debounce 80ms para no recalcular en cada pixel
+let debounceTimer=null;
+['sCPU','sGPU','sRAM','sCHIP'].forEach((id,i)=>{
+  const outs=['oCPU','oGPU','oRAM','oCHIP'];
+  document.getElementById(id).addEventListener('input',function(){
+    document.getElementById(outs[i]).textContent=this.value+'W';
+    clearTimeout(debounceTimer);
+    debounceTimer=setTimeout(()=>scheduleDraw(), 60);
+  });
+});
+
+draw();
+</script>
+</body>
+</html>
